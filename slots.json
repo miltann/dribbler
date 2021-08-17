@@ -1,0 +1,22 @@
+{
+    "BS_Kursid_178675": {
+        "name": "Bib2 Morgen-Slot",
+        "run_at": {
+            "hour": 7,
+            "minute": 59,
+            "second": 45,
+            "microsecond": 0
+        }
+    },
+    "BS_Kursid_178676": {
+        "name": "Bib2 Nachmittag-Slot",
+        "run_at": {
+            "hour": 13,
+            "minute": 59,
+            "second": 45,
+            "microsecond": 0
+        }
+    }
+}
+
+
