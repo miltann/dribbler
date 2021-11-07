@@ -20,10 +20,11 @@ import string
 import secrets
 import os
 
+
 # ================================== global settings and logging
 
 # ----- logging
-__version__ = 'v1'
+__version__ = 'v1.1'
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 LOGFILE = os.path.join(__location__, 'lernraum.log')
 FORMAT = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -35,16 +36,18 @@ fh.setFormatter(FORMAT)
 logging.basicConfig(level=logging.INFO, handlers=[ch, fh])
 
 _TESTING = False
-_BOOKSLOT = False # !!!!!!!!!!!!! Be careful: HAS BEEN REMOVED FROM CONDITION BELOW!
+_BOOKSLOT = True # !!!!!!!!!!!!! Be careful: HAS BEEN REMOVED FROM CONDITION BELOW!
 _DISCORD = False
 disableLogin = False
+aSlotWillBeAvailableSoonDespiteFullyBooked = False # use this ONLY if you know someone who wants to cancel a slot
 refreshRate = 1
+timeout = 120 # amount of tries/refreshes, takes 2 min @ 1 sec refresh rate
 
 # because server time may be different:
 tz = pytz.timezone('Europe/Berlin')
 
 # remove this if you wish to disable discord webhook logging
-webhookUrl = '' # discord webhook here
+# webhookUrl = # discord webhook here
 bookingUrl = 'https://buchung.hsz.rwth-aachen.de/angebote/aktueller_zeitraum/_Lernraumbuchung.html'
 userFile = 'users.json'
 slotsFile = 'slots.json'
@@ -70,11 +73,10 @@ if _TESTING:
                     }        
         }
     }
-    bookingUrl = 'https://buchung.hsz.rwth-aachen.de/angebote/aktueller_zeitraum/_Lernplatzbuchung_FHB.html'
+    # bookingUrl = 'https://buchung.hsz.rwth-aachen.de/angebote/aktueller_zeitraum/_Lernplatzbuchung_FHB.html'
     userFile = 'testbrudis.json'
 
 
-# tell me you have ocd without telling me you have ocd:
 def discordCheck(bool): 
     if bool:
         return ':white_check_mark:'
@@ -160,13 +162,17 @@ def getValidForm(driver, roomId, bookingUrl):
     window = driver.window_handles[1]
     driver.switch_to.window(window)
 
-    tomorrowDate = datetime.now(tz) + timedelta(1)
-    if _TESTING: tomorrowDate = datetime.now(tz) # + timedelta(1) # wont work on sundays
+    
+    if _TESTING or aSlotWillBeAvailableSoonDespiteFullyBooked: 
+        tomorrowDate = datetime.now(tz) # + timedelta(1) # wont work on sundays
+    else:
+        tomorrowDate = datetime.now(tz) + timedelta(1)
+        
     bookingDate = 'BS_Termin_' + tomorrowDate.strftime('%Y-%m-%d')
     logging.info("booking date: " + str(tomorrowDate))
 
     count = 0
-    while True:
+    while count < timeout:
         count = count + 1
         input2 = driver.find_elements_by_name(bookingDate)
         if len(input2) == 0 or input2 == None:
@@ -178,9 +184,16 @@ def getValidForm(driver, roomId, bookingUrl):
             input2[0].click()
             return 1
         elif input2[0].get_attribute('value') == 'Warteliste':
-            return 0
-            break
-    
+            if aSlotWillBeAvailableSoonDespiteFullyBooked:
+                logging.info('Slot ist zwar ausgebucht, aber es sollte gleich etwas frei werden. %i. Durchlauf...' % count)
+                sleep(refreshRate)
+                driver.refresh()
+            else:
+                return 0
+                
+    logging.error('Timeout, mehr als %i Versuche.' % timeout)
+    return 0
+        
 
 # returns 0 if either: no password is set or nothing is returned from server or login is disabled by user
 # from form to confirmation page
@@ -203,12 +216,16 @@ def postLoginForm(driver, userData, fid):
     logging.info('Login form sent!')
     
     if driver.find_elements_by_name('name')[0].get_attribute('value') == '':
-        logging.error('Login is incorrect or doesnt exist')
+        logging.warning('Login is incorrect or doesnt exist')
         return 0
 
     if elementExistsByCss(driver, '.bs_fval_iban') > 0:
         driver.find_elements_by_name('iban')
         driver.send_keys(userData['iban'])
+        
+    if elementExistsByCss(driver, 'textarea.bs_form_field') > 0:
+        driver.find_elements_by_name('bemerkung')
+        driver.send_keys(userData['bemerkung'])               
         
     checkBox = driver.find_element_by_name('tnbed')
     checkBox.click()
@@ -235,6 +252,10 @@ def postForm(driver, userData):
     if elementExistsByCss(driver, '.bs_fval_iban') > 0:
         driver.find_elements_by_name('iban')
         driver.send_keys(userData['iban'])
+        
+    if elementExistsByCss(driver, 'textarea.bs_form_field') > 0:
+        driver.find_elements_by_name('bemerkung')
+        driver.send_keys(userData['bemerkung'])        
 
     checkBox = driver.find_element_by_name('tnbed')
     checkBox.click()
@@ -247,16 +268,20 @@ def postForm(driver, userData):
 
 
 def handleBrudi(driver, brudi, roomId):
-    logging.info("Brudi: " + brudi['vorname'] + " " + brudi['name'])
+    logging.info('Brudi: {} {}'.format(brudi['vorname'], brudi['name']))
 
     # get form
-    validBookingLink = getValidForm(driver, roomId, bookingUrl)
-
-    # Check current status
-    if validBookingLink == 0:
-        logging.error('Leider zu spät bratan, alle Plätze weg :(')
-        sendDiscord(':slight_frown: Leider zu spät bratan, alle Plätze weg')        
-        driver.quit()
+    try:
+        validBookingLink = getValidForm(driver, roomId, bookingUrl)
+        
+        if validBookingLink == 0: # Check current status
+            logging.error('Leider zu spät bratan, alle Plätze weg :(')
+            sendDiscord(':slight_frown: Leider zu spät bratan, alle Plätze weg')        
+            driver.quit()
+            return
+    except Exception as err:
+        logging.error(err)
+        sendDiscord(':no_entry_sign: An error has occurred: {}'.format(err))
         return
 
     sendDiscord(':hourglass_flowing_sand: Slots available. Booking now...')
@@ -303,7 +328,6 @@ def handleBrudi(driver, brudi, roomId):
             break
 
     logging.info("Thread für: " + brudi['email'] + " beendet sich.")
-    sendDiscord(':checkered_flag: Finished booking {}'.format(slots[roomId]['name']))
     driver.quit()
     return
 
@@ -318,34 +342,39 @@ def main(roomId):
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-gpu')
         options.binary_location = GOOGLE_CHROME_BIN
-        #options.add_argument('--disable-dev-shm-usage')
-
-    drivers = []
-    for i in brudis:
-        userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0' # soon: import undetected-chromedriver
-        options.add_argument(f'--user-agent={userAgent}')
-        logging.info('Ich klär Bibplatz für dich {} abi, keine Sorge'.format(i['vorname']))
-        drivers.append(webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=options))
-    logging.info('Versuche einen freien Platz zu bekommen...')
+        options.add_argument('--disable-dev-shm-usage')
     
     threads = []
-    for i in range(len(brudis)):
-        #if roomId in brudi['slotPreference']:
-        t = threading.Thread(target=handleBrudi, args=(drivers[i], brudis[i], roomId) )
-        threads.append(t)
+    for i in brudis:
+        if i['matnr'] in slots[roomId]['bookers']:
+            userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0' # soon: import undetected-chromedriver
+            options.add_argument(f'--user-agent={userAgent}')
+            logging.info('Ich klär Bibplatz für dich {} abi, keine Sorge'.format(i['vorname']))
+            driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=options)
+
+            t = threading.Thread(target=handleBrudi, args=(driver, i, roomId))
+            threads.append(t)
+            
+    logging.info('Versuche einen freien Platz zu bekommen...')    
+    
+    for t in threads:
         t.start()
     
-    for i in range(len(brudis)):
+    for t in threads:
         t.join() # wait til threads have finished
 
+    sendDiscord(':checkered_flag: Finished booking {}'.format(slots[roomId]['name']))
+    logging.info('Updating users.json...')
     updateUsers(brudis)
-
+    return
+    
 
 if __name__ == "__main__":
     logging.info('============ BEREIT ZU DRIBBLEN ============')
     slots = readSlots()
+    n = len(readUsers())
     sendDiscord(':soccer: ** Dribbler Online **')
-    sendDiscord(':gear: **Testing**: {}, **BookSlot**: {}, **OsArchitechture**: {}, **Version**: {}, **Refresh Rate**: {}'.format(discordCheck(_TESTING), discordCheck(_BOOKSLOT), os.environ['PROCESSOR_ARCHITECTURE'], __version__, refreshRate))
+    sendDiscord(':gear: **Testing**: {}, **BookSlot**: {}, **OsArch**: {}, **Version**: {}, **Refresh Rate**: {}, **# of Users**: {}'.format(discordCheck(_TESTING), discordCheck(_BOOKSLOT), os.environ['PROCESSOR_ARCHITECTURE'], __version__, refreshRate, n))
 
     now = datetime.now(tz)
     for slot in slots:
@@ -353,7 +382,9 @@ if __name__ == "__main__":
         runAtData = slotData['run_at']
         run_at = now.replace(day=now.day, hour=runAtData['hour'], minute=runAtData['minute'], second=runAtData['second'], microsecond=runAtData['microsecond'])
         delay = (run_at - now).total_seconds()
-        if delay < 0:
+        if aSlotWillBeAvailableSoonDespiteFullyBooked:
+            delay = 0
+        elif delay < 0:
             run_at += timedelta(hours=24)
             delay = (run_at - now).total_seconds()
         sceduleStr = 'Scheduling {0} to run at {1} (UTC +2).'.format(slotData['name'], run_at.replace(microsecond=0, tzinfo=None))

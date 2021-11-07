@@ -1,6 +1,7 @@
 {
-    "BS_Kursid_178675": {
+    "BS_Kursid_181913": {
         "name": "Bib2 Morgen-Slot",
+        "bookers" : "['xxxxxx']",
         "run_at": {
             "hour": 7,
             "minute": 59,
@@ -8,8 +9,29 @@
             "microsecond": 0
         }
     },
-    "BS_Kursid_178676": {
+    "BS_Kursid_181914": {
         "name": "Bib2 Nachmittag-Slot",
+        "bookers" : "['xxxxxx']",
+        "run_at": {
+            "hour": 13,
+            "minute": 59,
+            "second": 45,
+            "microsecond": 0
+        }
+    },
+    "BS_Kursid_181911": {
+        "name": "Bib1 Morgen-Slot",
+        "bookers" : "['xxxxxx']",
+        "run_at": {
+            "hour": 7,
+            "minute": 59,
+            "second": 45,
+            "microsecond": 0
+        }
+    },
+    "BS_Kursid_181912": {
+        "name": "Bib1 Nachmittag-Slot",
+        "bookers" : "['xxxxxx']",
         "run_at": {
             "hour": 13,
             "minute": 59,
@@ -18,5 +40,3 @@
         }
     }
 }
-
-
