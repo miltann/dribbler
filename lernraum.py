@@ -21,9 +21,6 @@ import secrets
 import os
 
 
-# ================================== global settings and logging
-
-# ----- logging
 __version__ = 'v1.1'
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 LOGFILE = os.path.join(__location__, 'lernraum.log')
@@ -36,18 +33,17 @@ fh.setFormatter(FORMAT)
 logging.basicConfig(level=logging.INFO, handlers=[ch, fh])
 
 _TESTING = False
-_BOOKSLOT = True # !!!!!!!!!!!!! Be careful: HAS BEEN REMOVED FROM CONDITION BELOW!
+_BOOKSLOT = True
 _DISCORD = False
 disableLogin = False
 aSlotWillBeAvailableSoonDespiteFullyBooked = False # use this ONLY if you know someone who wants to cancel a slot
 refreshRate = 1
-timeout = 120 # amount of tries/refreshes, takes 2 min @ 1 sec refresh rate
 
 # because server time may be different:
 tz = pytz.timezone('Europe/Berlin')
 
 # remove this if you wish to disable discord webhook logging
-# webhookUrl = # discord webhook here
+webhookUrl = # discord webhook here
 bookingUrl = 'https://buchung.hsz.rwth-aachen.de/angebote/aktueller_zeitraum/_Lernraumbuchung.html'
 userFile = 'users.json'
 slotsFile = 'slots.json'
@@ -58,25 +54,9 @@ if os.environ['PROCESSOR_ARCHITECTURE'] == 'heroku':
     CHROMEDRIVER_PATH = '/app/.chromedriver/bin/chromedriver'
 else:
     #CHROMEDRIVER_PATH = os.path.join(__location__, 'chromedriver.exe') if you want to use local chromedriver
-    CHROMEDRIVER_PATH = ChromeDriverManager().install()
+    CHROMEDRIVER_PATH = ChromeDriverManager().install() # automatically updates local chromedriver, if outdated
 
-if _TESTING:
-    testSlot = 'BS_Kursid_175850' # bib jülich
-    slots = {
-    'BS_Kursid_175850' : {
-        'name' : 'Jülich Bib Testslot',
-        'run_at' : {
-                    'hour' : datetime.now(tz).hour,
-                    'minute' : datetime.now(tz).minute,
-                    'second' : 59,
-                    'microsecond' : 900
-                    }        
-        }
-    }
-    # bookingUrl = 'https://buchung.hsz.rwth-aachen.de/angebote/aktueller_zeitraum/_Lernplatzbuchung_FHB.html'
-    userFile = 'testbrudis.json'
-
-
+# tell me you have ocd without telling me you have ocd:
 def discordCheck(bool): 
     if bool:
         return ':white_check_mark:'
@@ -172,6 +152,7 @@ def getValidForm(driver, roomId, bookingUrl):
     logging.info("booking date: " + str(tomorrowDate))
 
     count = 0
+    timeout = 120 # 2 min @ 1 sec refresh rate
     while count < timeout:
         count = count + 1
         input2 = driver.find_elements_by_name(bookingDate)
@@ -220,12 +201,12 @@ def postLoginForm(driver, userData, fid):
         return 0
 
     if elementExistsByCss(driver, '.bs_fval_iban') > 0:
-        driver.find_elements_by_name('iban')
-        driver.send_keys(userData['iban'])
+        iban = driver.find_elements_by_name('iban')
+        iban[0].send_keys(userData['iban'])
         
     if elementExistsByCss(driver, 'textarea.bs_form_field') > 0:
-        driver.find_elements_by_name('bemerkung')
-        driver.send_keys(userData['bemerkung'])               
+        bemerkung = driver.find_elements_by_name('bemerkung')
+        bemerkung[0].send_keys(userData['bemerkung'])               
         
     checkBox = driver.find_element_by_name('tnbed')
     checkBox.click()
@@ -347,7 +328,7 @@ def main(roomId):
     threads = []
     for i in brudis:
         if i['matnr'] in slots[roomId]['bookers']:
-            userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0' # soon: import undetected-chromedriver
+            userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
             options.add_argument(f'--user-agent={userAgent}')
             logging.info('Ich klär Bibplatz für dich {} abi, keine Sorge'.format(i['vorname']))
             driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=options)
