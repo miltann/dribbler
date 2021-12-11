@@ -1,0 +1,15 @@
+[
+    {
+        "sex": "M",
+        "vorname": "Dieter",
+        "name": "Bohlen",
+        "strasse": "Musterstrasse 1",
+        "ort": "10115 Berlin",
+        "statusorig": "S-RWTH",
+        "matnr": "123456",
+        "email": "son.goku69@uni.de",
+        "telefon": "0800123457890",
+        "password": "",
+        "bemerkung": "Magenta"
+    }
+]
